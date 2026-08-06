@@ -7,7 +7,7 @@ RUN python -m pip wheel --no-cache-dir --no-deps --wheel-dir /wheels .
 
 FROM python:3.12-slim
 
-ARG VERSION=0.1.0
+ARG VERSION=dev
 ARG VCS_REF=unknown
 LABEL org.opencontainers.image.title="RepoSync" \
       org.opencontainers.image.description="Atomic force mirroring of Git repositories" \
