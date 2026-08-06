@@ -1,0 +1,34 @@
+# RepoSync force-mirror configuration, version 1.
+# Credentials are written directly in this YAML. Replace every placeholder and
+# protect the file with chmod 600 before running the container.
+version: 1
+interval: 5m
+workdir: /var/lib/reposync
+concurrency: 4
+git_timeout: 10m
+
+repositories:
+  - name: github-to-gitea
+    source:
+      platform: github
+      repository: your-org/api
+      username: github-user
+      password: replace-with-github-token
+    target:
+      platform: gitea
+      base_url: https://gitea.example.com
+      repository: backup/api
+      username: gitea-user
+      password: replace-with-gitea-password-or-token
+
+  - name: gitlab-to-gitee
+    source:
+      platform: gitlab
+      repository: your-group/docs
+      username: oauth2
+      password: replace-with-gitlab-token
+    target:
+      platform: gitee
+      repository: your-team/docs
+      username: gitee-user
+      password: replace-with-gitee-password-or-token
