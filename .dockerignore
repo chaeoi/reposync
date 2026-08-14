@@ -3,8 +3,9 @@
 __pycache__
 *.py[cod]
 *.egg-info
+.coverage
 .pytest_cache
-tests
-docs
+.ruff_cache
+.venv
 .env
 config.yml

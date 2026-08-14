@@ -6,15 +6,14 @@ import logging
 import os
 import re
 import tempfile
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
 
-from reposync.config import Config, Credential, Repository
-from reposync.adapters.git import Git, GitError
-
+from core.config import Config, Credential, Repository
+from core.git import Git, GitError
 
 LOG = logging.getLogger("reposync")
 _MAX_STABILIZATION_ATTEMPTS = 3
@@ -91,6 +90,9 @@ class RepositorySynchronizer:
         return path
 
     def sync_all(self, *, dry_run: bool = False) -> list[SyncResult]:
+        if not self.config.repositories:
+            return []
+
         results: list[SyncResult] = []
         errors: list[tuple[str, Exception]] = []
         workers = min(self.config.concurrency, len(self.config.repositories))
@@ -108,6 +110,7 @@ class RepositorySynchronizer:
                     LOG.error("repository=%s sync failed: %s", name, exc)
 
         if errors:
+            errors.sort(key=lambda item: item[0])
             summary = "; ".join(f"{name}: {error}" for name, error in errors)
             raise RuntimeError(f"{len(errors)} repository sync(s) failed: {summary}")
         return sorted(results, key=lambda result: result.repository)
@@ -179,8 +182,10 @@ class RepositorySynchronizer:
         cache.parent.mkdir(parents=True, exist_ok=True)
         if not cache.exists():
             self.git.run(["init", "--bare", str(cache)])
-        elif not (cache / "HEAD").exists():
-            raise GitError(f"cache path is not a bare git repository: {cache}")
+        else:
+            bare = self.git.run(["rev-parse", "--is-bare-repository"], cwd=cache, check=False)
+            if bare.returncode != 0 or bare.stdout.strip() != "true":
+                raise GitError(f"cache path is not a bare git repository: {cache}")
 
         existing = self.git.run(["remote"], cwd=cache).stdout.splitlines()
         for name, endpoint in (
@@ -246,9 +251,7 @@ class RepositorySynchronizer:
     ) -> None:
         args = ["push", "--atomic", "--porcelain"]
         for action in actions:
-            args.append(
-                f"--force-with-lease={action.ref}:{action.expected_oid or ''}"
-            )
+            args.append(f"--force-with-lease={action.ref}:{action.expected_oid or ''}")
         args.append("target")
         for action in actions:
             refspec = (

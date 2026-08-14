@@ -1,9 +1,5 @@
-# RepoSync force-mirror configuration, version 1.
 # Credentials are written directly in this YAML. Replace every placeholder and
-# protect the file with chmod 600 before running the container.
-version: 1
-interval: 5m
-workdir: /var/lib/reposync
+# protect the file with chmod 640 before running the container.
 concurrency: 4
 git_timeout: 10m
 

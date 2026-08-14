@@ -7,10 +7,9 @@ import sys
 import threading
 from pathlib import Path
 
-from reposync import __version__
-from reposync.config import ConfigError, load_config
-from reposync.services.mirror import RepositorySynchronizer
-
+from core import __version__
+from core.config import ConfigError, load_config
+from core.mirror import RepositorySynchronizer
 
 LOG = logging.getLogger("reposync")
 
@@ -29,9 +28,7 @@ def _parser() -> argparse.ArgumentParser:
 
     for name in ("validate", "sync", "run"):
         command = subparsers.add_parser(name)
-        command.add_argument(
-            "--config", type=Path, default=Path("/etc/reposync/config.yml")
-        )
+        command.add_argument("--config", type=Path, default=Path("/etc/reposync/config.yml"))
         if name == "sync":
             command.add_argument("--dry-run", action="store_true")
     return parser
@@ -67,15 +64,17 @@ def _run(config_path: Path) -> int:
     while not stop.is_set():
         try:
             config = load_config(config_path)
+        except ConfigError as exc:
+            LOG.error("%s", exc)
+            return 2
+
+        try:
             with RepositorySynchronizer(config) as synchronizer:
                 synchronizer.sync_all()
-            LOG.info("sync cycle complete; next run in %ds", config.interval_seconds)
         except Exception:
             LOG.exception("sync cycle failed")
-            try:
-                config = load_config(config_path)
-            except ConfigError:
-                return 2
+        if not stop.is_set():
+            LOG.info("next sync in %ds", config.interval_seconds)
         stop.wait(config.interval_seconds)
     return 0
 
@@ -92,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "sync":
             return _sync_once(args.config, dry_run=args.dry_run)
         return _run(args.config)
-    except (ConfigError, RuntimeError) as exc:
+    except (ConfigError, RuntimeError, OSError) as exc:
         LOG.error("%s", exc)
         return 2
     except KeyboardInterrupt:

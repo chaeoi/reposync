@@ -60,14 +60,10 @@ class Config:
 
 def _expand_environment(value: Any, location: str = "config") -> Any:
     if isinstance(value, dict):
-        return {
-            key: _expand_environment(item, f"{location}.{key}")
-            for key, item in value.items()
-        }
+        return {key: _expand_environment(item, f"{location}.{key}") for key, item in value.items()}
     if isinstance(value, list):
         return [
-            _expand_environment(item, f"{location}[{index}]")
-            for index, item in enumerate(value)
+            _expand_environment(item, f"{location}[{index}]") for index, item in enumerate(value)
         ]
     if not isinstance(value, str):
         return value
@@ -110,12 +106,15 @@ def _credential_map(raw: Any) -> dict[str, Credential]:
 
     credentials: dict[str, Credential] = {}
     for name, value in raw.items():
-        location = f"credentials.{name}"
+        credential_name = _nonempty_string(name, "credentials: key")
+        location = f"credentials.{credential_name}"
+        if credential_name in credentials:
+            raise ConfigError(f"{location}: duplicate credential name")
         if not isinstance(value, dict):
             raise ConfigError(f"{location}: expected a mapping")
         username = _nonempty_string(value.get("username"), f"{location}.username")
         password = _nonempty_string(value.get("password"), f"{location}.password")
-        credentials[str(name)] = Credential(username=username, password=password)
+        credentials[credential_name] = Credential(username=username, password=password)
     return credentials
 
 
@@ -124,6 +123,11 @@ def _endpoint(raw: Any, location: str, credentials: dict[str, Credential]) -> En
         raise ConfigError(f"{location}: expected a mapping")
 
     platform = _nonempty_string(raw.get("platform"), f"{location}.platform").lower()
+    if platform not in _KNOWN_PLATFORMS:
+        raise ConfigError(
+            f"{location}.platform: unknown platform {platform!r}; "
+            f"expected one of {', '.join(sorted(_KNOWN_PLATFORMS))}"
+        )
     repository_value = raw.get("repository")
     repository = (
         _nonempty_string(repository_value, f"{location}.repository")
@@ -144,12 +148,11 @@ def _endpoint(raw: Any, location: str, credentials: dict[str, Credential]) -> En
             raise ConfigError(f"{location}.repository: required for platform {platform!r}")
         url = _PLATFORM_URLS[platform].format(repository=repository.removesuffix(".git"))
     else:
-        raise ConfigError(
-            f"{location}.url: required for platform {platform!r}; "
-            f"known platforms are {', '.join(sorted(_KNOWN_PLATFORMS))}"
-        )
+        raise ConfigError(f"{location}.url: required for platform {platform!r}")
 
     parsed = urlsplit(url)
+    if parsed.scheme in {"http", "https", "ssh", "git"} and not parsed.hostname:
+        raise ConfigError(f"{location}.url: URL is missing a host")
     if parsed.scheme in {"http", "https"} and (parsed.username or parsed.password):
         raise ConfigError(
             f"{location}.url: credentials must not be embedded in the URL; "
@@ -163,9 +166,7 @@ def _endpoint(raw: Any, location: str, credentials: dict[str, Credential]) -> En
         else None
     )
     if credential_name is not None and credential_name not in credentials:
-        raise ConfigError(
-            f"{location}.credential: unknown credential {credential_name!r}"
-        )
+        raise ConfigError(f"{location}.credential: unknown credential {credential_name!r}")
 
     has_inline_username = "username" in raw
     has_inline_password = "password" in raw
@@ -174,9 +175,7 @@ def _endpoint(raw: Any, location: str, credentials: dict[str, Credential]) -> En
             f"{location}: use either credential or inline username/password, not both"
         )
     if has_inline_username != has_inline_password:
-        raise ConfigError(
-            f"{location}: inline username and password must be provided together"
-        )
+        raise ConfigError(f"{location}: inline username and password must be provided together")
     inline_credential = None
     if has_inline_username:
         inline_credential = Credential(
@@ -189,9 +188,7 @@ def _endpoint(raw: Any, location: str, credentials: dict[str, Credential]) -> En
         repository=repository,
         url=url,
         credential_name=credential_name,
-        credential=(
-            credentials.get(credential_name) if credential_name else inline_credential
-        ),
+        credential=(credentials.get(credential_name) if credential_name else inline_credential),
     )
 
 
@@ -203,13 +200,15 @@ def load_config(path: str | Path) -> Config:
         raise ConfigError(f"configuration file not found: {config_path}") from exc
     except yaml.YAMLError as exc:
         raise ConfigError(f"invalid YAML in {config_path}: {exc}") from exc
+    except (OSError, UnicodeError) as exc:
+        raise ConfigError(f"could not read configuration file {config_path}: {exc}") from exc
 
     if not isinstance(raw, dict):
         raise ConfigError("config: expected a mapping at the document root")
     raw = _expand_environment(raw)
 
     version = raw.get("version", 1)
-    if version != 1:
+    if not isinstance(version, int) or isinstance(version, bool) or version != 1:
         raise ConfigError(f"version: unsupported configuration version {version!r}")
 
     credentials = _credential_map(raw.get("credentials"))
@@ -229,9 +228,7 @@ def load_config(path: str | Path) -> Config:
         names.add(name)
 
         if "left" in item or "right" in item:
-            raise ConfigError(
-                f"{location}: left/right is no longer supported; use source/target"
-            )
+            raise ConfigError(f"{location}: left/right is no longer supported; use source/target")
         for obsolete_key in ("conflict", "deletion_policy"):
             if obsolete_key in item:
                 raise ConfigError(
@@ -264,7 +261,9 @@ def load_config(path: str | Path) -> Config:
     return Config(
         version=version,
         interval_seconds=_duration(raw.get("interval", "5m"), "interval"),
-        workdir=Path(str(raw.get("workdir", "/var/lib/reposync"))).expanduser(),
+        workdir=Path(
+            _nonempty_string(raw.get("workdir", "/var/lib/reposync"), "workdir")
+        ).expanduser(),
         concurrency=concurrency,
         git_timeout_seconds=_duration(raw.get("git_timeout", "10m"), "git_timeout"),
         repositories=tuple(repositories),

@@ -1,11 +1,8 @@
-FROM python:3.12-slim AS build
-
-WORKDIR /build
-COPY pyproject.toml setup.cfg README.md ./
-COPY src ./src
-RUN python -m pip wheel --no-cache-dir --no-deps --wheel-dir /wheels .
-
 FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 ARG VERSION=dev
 ARG VCS_REF=unknown
@@ -17,16 +14,17 @@ LABEL org.opencontainers.image.title="RepoSync" \
 RUN apt-get update \
     && apt-get install --no-install-recommends --yes git ca-certificates openssh-client \
     && rm -rf /var/lib/apt/lists/* \
-    && groupadd --system --gid 10001 reposync \
-    && useradd --system --uid 10001 --gid reposync --create-home --home-dir /home/reposync reposync \
+    && python -m pip install --no-cache-dir --root-user-action=ignore "PyYAML==6.0.3" \
+    && groupadd --gid 10001 reposync \
+    && useradd --uid 10001 --gid reposync --create-home --home-dir /home/reposync \
+        --shell /usr/sbin/nologin reposync \
     && mkdir -p /etc/reposync /var/lib/reposync \
     && chown -R reposync:reposync /etc/reposync /var/lib/reposync
 
-COPY --from=build /wheels /wheels
-RUN python -m pip install --no-cache-dir /wheels/*.whl \
-    && rm -rf /wheels
+WORKDIR /app
+COPY --chown=reposync:reposync core ./core
 
 USER reposync
 VOLUME ["/var/lib/reposync"]
-ENTRYPOINT ["reposync"]
+ENTRYPOINT ["python", "-m", "core"]
 CMD ["run", "--config", "/etc/reposync/config.yml"]

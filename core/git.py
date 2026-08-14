@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import os
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
 
-from reposync.config import Credential
+from core.config import Credential
 
 
 class GitError(RuntimeError):
@@ -55,8 +55,7 @@ class Git:
                 cwd=cwd,
                 env=environment,
                 text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 timeout=self.timeout_seconds,
                 check=False,
             )
