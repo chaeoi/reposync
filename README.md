@@ -72,10 +72,10 @@ GitHub Actions 仅用于发布 Docker 镜像。先在仓库的 `Settings -> Secr
 
 ```text
 DOCKERHUB_USERNAME/reposync:latest
-DOCKERHUB_USERNAME/reposync:YYYYMMDD
+DOCKERHUB_USERNAME/reposync:2026.11.1
 ```
 
-日期标签使用 commit 的 UTC 提交日期。
+版本标签使用 commit 的 UTC 年月和同月发布序号。
 
 GitHub 不支持账户密码进行 HTTPS Git 操作，应使用 Personal Access Token；Gitea/GitLab 开启 MFA/2FA 时同样使用 token。
 
@@ -119,3 +119,15 @@ cli -> mirror -> git
 ### 配置边界
 
 每个 `repositories` 项只有一个方向：`source` 是权威端，`target` 是镜像端。当前同步范围固定为所有分支和标签，不能用过滤字段制造“部分镜像”。账号密码可以直接写在端点，或通过同一个 YAML 中的 `credentials` 区块复用。
+
+## 版本与发布
+
+推送到 `main` 后，GitHub Actions 自动编号、创建标签并发布，版本格式为 `年.月.发布序号`。
+年月取 commit 提交时间的 UTC 年月；没有同月标签时从 `.1` 开始，后续取同月最大序号加一。
+一次推送多个提交只为最后一个提交分配一次编号，首次发布前的历史提交不计数。
+同一 commit 重跑沿用原编号，构建失败预留的编号不回收，因此未完成的发布可能留下空号。
+
+发布任务排队执行。后续 commit 已有版本标签时，尚未编号的旧任务会跳过；已编号的旧版本可以重跑，
+但不会覆盖更新的 `latest`。中断的草稿发布可继续完成，已公开的附件和已有版本镜像不覆盖。
+Release 名称采用“项目名 版本号”，正文包含提交说明、使用入口和相邻版本变更；附件提供 `SHA256SUMS`。
+构建时写入程序或包版本，不自动回写源码提交。开发副本使用开发版本标识。

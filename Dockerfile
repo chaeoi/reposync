@@ -5,6 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 ARG VERSION=dev
+ENV REPOSYNC_VERSION=$VERSION
 ARG VCS_REF=unknown
 LABEL org.opencontainers.image.title="RepoSync" \
       org.opencontainers.image.description="Atomic force mirroring of Git repositories" \

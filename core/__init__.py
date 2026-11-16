@@ -1,3 +1,5 @@
 """RepoSync package."""
 
-__version__ = "0.1.0"
+import os
+
+__version__ = os.environ.get("REPOSYNC_VERSION", "dev")
